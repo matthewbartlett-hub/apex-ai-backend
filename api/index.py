@@ -37,31 +37,36 @@ async def upload(file: UploadFile = File(...)):
     filename = file.filename.lower()
 
     # ---------------------------
-    # PDF HANDLING (correct way)
+    # PDF HANDLING (correct API)
     # ---------------------------
     if filename.endswith(".pdf"):
-        request = vision.AsyncAnnotateFileRequest(
-            requests=[
-                vision.AnnotateFileRequest(
-                    input_config=vision.InputConfig(
-                        content=content,
-                        mime_type="application/pdf"
-                    ),
-                    features=[vision.Feature(type_=vision.Feature.Type.DOCUMENT_TEXT_DETECTION)]
-                )
-            ]
+        input_config = vision.InputConfig(
+            content=content,
+            mime_type="application/pdf"
         )
 
-        operation = vision_client.async_batch_annotate_files(requests=[request])
+        feature = vision.Feature(
+            type_=vision.Feature.Type.DOCUMENT_TEXT_DETECTION
+        )
 
-        result = operation.result(timeout=120)
+        file_request = vision.AnnotateFileRequest(
+            input_config=input_config,
+            features=[feature]
+        )
 
-        # Extract text from all pages
+        batch_request = vision.AsyncBatchAnnotateFilesRequest(
+            requests=[file_request]
+        )
+
+        operation = vision_client.async_batch_annotate_files(requests=[file_request])
+
+        result = operation.result(timeout=180)
+
+        # Extract text from all responses and pages
         full_text = ""
         for response in result.responses:
-            for annotation in response.responses:
-                if annotation.full_text_annotation.text:
-                    full_text += annotation.full_text_annotation.text + "\n"
+            if response.full_text_annotation.text:
+                full_text += response.full_text_annotation.text + "\n"
 
         return {
             "filename": file.filename,
