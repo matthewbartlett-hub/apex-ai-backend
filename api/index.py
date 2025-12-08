@@ -7,7 +7,7 @@ from google.cloud import vision
 
 app = FastAPI()
 
-# Allow Streamlit frontend to call the backend
+# Allow Streamlit frontend to communicate with backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,12 +16,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global Vision client (assigned during startup)
+# Global Vision client (assigned on startup)
 vision_client = None
 
 
 # ---------------------------
-# SAFE STARTUP (NO CRASH BEFORE UVICORN STARTS)
+# SAFE STARTUP INITIALISATION
 # ---------------------------
 @app.on_event("startup")
 def startup_event():
@@ -33,7 +33,6 @@ def startup_event():
 
     cred_dict = json.loads(cred_json)
     credentials = service_account.Credentials.from_service_account_info(cred_dict)
-
     vision_client = vision.ImageAnnotatorClient(credentials=credentials)
 
 
@@ -46,7 +45,7 @@ def root():
 
 
 # ---------------------------
-# MAIN OCR ENDPOINT
+# OCR ENDPOINT
 # ---------------------------
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
@@ -54,7 +53,7 @@ async def upload(file: UploadFile = File(...)):
     filename = file.filename.lower()
 
     # ---------------------------
-    # PDF OCR (SYNCHRONOUS BATCH)
+    # PDF HANDLING
     # ---------------------------
     if filename.endswith(".pdf"):
         input_config = vision.InputConfig(
@@ -77,10 +76,13 @@ async def upload(file: UploadFile = File(...)):
 
         result = vision_client.batch_annotate_files(request=batch_request)
 
+        # Correct nested response handling
         full_text = ""
-        for response in result.responses:
-            if response.full_text_annotation.text:
-                full_text += response.full_text_annotation.text + "\n"
+        for file_response in result.responses:
+            for image_response in file_response.responses:
+                annotation = image_response.full_text_annotation
+                if annotation.text:
+                    full_text += annotation.text + "\n"
 
         return {
             "filename": filename,
@@ -89,15 +91,15 @@ async def upload(file: UploadFile = File(...)):
         }
 
     # ---------------------------
-    # IMAGE OCR
+    # IMAGE HANDLING
     # ---------------------------
     image = vision.Image(content=content)
     response = vision_client.text_detection(image=image)
 
-    text = response.text_annotations[0].description if response.text_annotations else ""
+    extracted = response.text_annotations[0].description if response.text_annotations else ""
 
     return {
         "filename": filename,
-        "ocr_text": text,
+        "ocr_text": extracted,
         "status": "Image processed"
     }
