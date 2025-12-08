@@ -5,6 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2 import service_account
 from google.cloud import vision
 
+# Import the central extraction router
+from extractors_router import router as extractors_router
+
+
 app = FastAPI()
 
 # Allow Streamlit frontend to communicate with backend
@@ -16,7 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global Vision client (assigned on startup)
+# Global Vision client
 vision_client = None
 
 
@@ -76,7 +80,6 @@ async def upload(file: UploadFile = File(...)):
 
         result = vision_client.batch_annotate_files(request=batch_request)
 
-        # Correct nested response handling
         full_text = ""
         for file_response in result.responses:
             for image_response in file_response.responses:
@@ -95,7 +98,6 @@ async def upload(file: UploadFile = File(...)):
     # ---------------------------
     image = vision.Image(content=content)
     response = vision_client.text_detection(image=image)
-
     extracted = response.text_annotations[0].description if response.text_annotations else ""
 
     return {
@@ -103,3 +105,9 @@ async def upload(file: UploadFile = File(...)):
         "ocr_text": extracted,
         "status": "Image processed"
     }
+
+
+# ---------------------------
+# MOUNT EXTRACTION ENGINE
+# ---------------------------
+app.include_router(extractors_router, prefix="/api")
