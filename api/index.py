@@ -1,3 +1,5 @@
+# api/index.py
+
 import os
 import json
 from fastapi import FastAPI, File, UploadFile
@@ -5,9 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2 import service_account
 from google.cloud import vision
 
-# Import the central extraction router
-from extractors_router import router as extractors_router
-
+# Import the central extraction router (note the api. prefix)
+from api.extractors_router import router as extractors_router
 
 app = FastAPI()
 
@@ -56,9 +57,7 @@ async def upload(file: UploadFile = File(...)):
     content = await file.read()
     filename = file.filename.lower()
 
-    # ---------------------------
     # PDF HANDLING
-    # ---------------------------
     if filename.endswith(".pdf"):
         input_config = vision.InputConfig(
             content=content,
@@ -93,9 +92,7 @@ async def upload(file: UploadFile = File(...)):
             "status": "PDF processed"
         }
 
-    # ---------------------------
     # IMAGE HANDLING
-    # ---------------------------
     image = vision.Image(content=content)
     response = vision_client.text_detection(image=image)
     extracted = response.text_annotations[0].description if response.text_annotations else ""
