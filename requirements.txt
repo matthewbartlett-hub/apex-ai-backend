@@ -1,7 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 google-cloud-vision
 google-auth
 python-multipart
-pydantic
-requests
