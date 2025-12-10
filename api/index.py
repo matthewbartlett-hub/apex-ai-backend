@@ -1,5 +1,3 @@
-# api/index.py
-
 import os
 import json
 from fastapi import FastAPI, File, UploadFile
@@ -7,12 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2 import service_account
 from google.cloud import vision
 
-# Import the central extraction router (note the api. prefix)
-from api.extractors_router import router as extractors_router
-
 app = FastAPI()
 
-# Allow Streamlit frontend to communicate with backend
+# Allow frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,44 +16,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global Vision client
 vision_client = None
 
-
-# ---------------------------
-# SAFE STARTUP INITIALISATION
-# ---------------------------
 @app.on_event("startup")
 def startup_event():
     global vision_client
 
+    # Load credentials safely
     cred_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
     if not cred_json:
-        raise RuntimeError("Missing GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable")
+        raise RuntimeError("Missing GOOGLE_APPLICATION_CREDENTIALS_JSON")
 
     cred_dict = json.loads(cred_json)
     credentials = service_account.Credentials.from_service_account_info(cred_dict)
+
     vision_client = vision.ImageAnnotatorClient(credentials=credentials)
 
 
-# ---------------------------
-# HEALTH CHECK ENDPOINT
-# ---------------------------
 @app.get("/")
 def root():
-    return {"status": "Backend running"}
+    return {"status": "running"}
 
 
-# ---------------------------
-# OCR ENDPOINT
-# ---------------------------
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
     content = await file.read()
     filename = file.filename.lower()
 
-    # PDF HANDLING
+    # PDF handler
     if filename.endswith(".pdf"):
+
         input_config = vision.InputConfig(
             content=content,
             mime_type="application/pdf"
@@ -80,31 +67,15 @@ async def upload(file: UploadFile = File(...)):
         result = vision_client.batch_annotate_files(request=batch_request)
 
         full_text = ""
-        for file_response in result.responses:
-            for image_response in file_response.responses:
-                annotation = image_response.full_text_annotation
-                if annotation.text:
-                    full_text += annotation.text + "\n"
+        for response in result.responses:
+            if response.full_text_annotation.text:
+                full_text += response.full_text_annotation.text + "\n"
 
-        return {
-            "filename": filename,
-            "ocr_text": full_text.strip(),
-            "status": "PDF processed"
-        }
+        return {"ocr_text": full_text.strip(), "status": "pdf"}
 
-    # IMAGE HANDLING
+    # Image handler
     image = vision.Image(content=content)
     response = vision_client.text_detection(image=image)
-    extracted = response.text_annotations[0].description if response.text_annotations else ""
+    text = response.text_annotations[0].description if response.text_annotations else ""
 
-    return {
-        "filename": filename,
-        "ocr_text": extracted,
-        "status": "Image processed"
-    }
-
-
-# ---------------------------
-# MOUNT EXTRACTION ENGINE
-# ---------------------------
-app.include_router(extractors_router, prefix="/api")
+    return {"ocr_text": text, "status": "image"}
